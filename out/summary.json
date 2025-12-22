@@ -1,0 +1,11 @@
+{
+  "total_trades_in_file": 925,
+  "trades_taken_by_rule": 23,
+  "take_rate": 0.024864864864864864,
+  "win_rate": 0.13043478260869565,
+  "avg_r": -0.45671440843996036,
+  "median_r": -1.0,
+  "profit_factor_r": 0.32217350909359155,
+  "max_r": 3.1812210200927353,
+  "min_r": -1.0
+}
