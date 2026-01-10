@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+requests
+apscheduler
+sqlmodel
+jinja2
+python-dotenv
+pandas
+numpy

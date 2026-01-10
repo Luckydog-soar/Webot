@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Scanner V2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'JetBrains Mono', monospace; background-color: #0d1117; color: #c9d1d9; }
+        .glass-panel { background: rgba(22, 27, 34, 0.8); border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .log-scroll { scrollbar-width: thin; scrollbar-color: #30363d #0d1117; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        
+        /* 180s 异动特效 */
+        .flash-tag {
+            background-color: #7c3aed; /* 紫色 */
+            color: #fff;
+            border: 1px solid #a78bfa;
+            animation: pulse-purple 2s infinite;
+        }
+        @keyframes pulse-purple {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col p-4">
+    {% raw %}
+    <div id="app" class="h-full flex flex-col gap-4">
+        
+        <header class="flex items-center justify-between px-2">
+            <div class="flex items-center gap-4">
+                <h1 class="text-xl font-bold text-white tracking-wider">CRYPTO RADAR <span class="text-xs text-gray-900 bg-green-400 px-1 rounded font-bold">V2.0</span></h1>
+                <div class="flex items-center gap-2 px-3 py-1 rounded bg-[#161b22] border border-[#30363d]">
+                    <span class="relative flex h-3 w-3">
+                      <span v-if="isRunning" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span :class="isRunning ? 'bg-green-500' : 'bg-red-500'" class="relative inline-flex rounded-full h-3 w-3"></span>
+                    </span>
+                    <span :class="isRunning ? 'text-green-400' : 'text-red-400'" class="text-xs font-bold uppercase">
+                        {{ isRunning ? 'Running' : 'Down' }}
+                    </span>
+                    <span v-if="isRunning" class="text-xs text-gray-600 ml-2">R{{ roundNum }}</span>
+                </div>
+            </div>
+
+            <div class="hidden md:flex items-center gap-2">
+                <span class="text-xs text-gray-500">MARKET HEAT:</span>
+                <span :class="marketHeat.color_class" class="font-bold text-lg">{{ marketHeat.score }}</span>
+                <span class="text-sm">{{ marketHeat.icon }}</span>
+            </div>
+        </header>
+
+        <main class="flex-1 grid grid-cols-1 lg:grid-cols-10 gap-4 overflow-hidden">
+            
+            <div class="lg:col-span-7 flex flex-col glass-panel overflow-hidden">
+                <div class="p-3 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+                    <h2 class="font-bold text-yellow-500 flex items-center gap-2">
+                        MONITOR LEADERBOARD
+                    </h2>
+                    <span class="text-xs text-gray-500">Auto-Sorted by Heat Score</span>
+                </div>
+                
+                <div class="grid grid-cols-12 gap-2 p-3 text-xs text-gray-400 font-bold border-b border-[#30363d] bg-[#0d1117]">
+                    <div class="col-span-1 text-center">RANK</div>
+                    <div class="col-span-2">TOKEN</div>
+                    <div class="col-span-2">HEAT SCORE</div>
+                    <div class="col-span-3">PRICE / MOVE</div>
+                    <div class="col-span-2">MSG</div>
+                    <div class="col-span-2 text-right">HITS (1H)</div>
+                </div>
+
+                <div class="overflow-y-auto flex-1 log-scroll">
+                    <div v-for="coin in hotList" :key="coin.symbol" 
+                         class="grid grid-cols-12 gap-2 p-3 border-b border-[#30363d] items-center hover:bg-[#1c2128] transition-colors text-sm">
+                        
+                        <div class="col-span-1 text-center font-bold" :class="{'text-yellow-400': coin.rank<=3, 'text-gray-500': coin.rank>3}">#{{ coin.rank }}</div>
+                        
+                        <div class="col-span-2">
+                            <div class="font-bold text-blue-400 text-base tracking-wide">{{ coin.symbol.replace('USDT', '') }}</div>
+                            <div class="flex gap-1 mt-1 flex-wrap">
+                                <span v-for="reason in coin.reasons" 
+                                      :class="getTagClass(reason)"
+                                      class="text-[10px] px-1 rounded transform scale-90 origin-left border border-opacity-30">
+                                    {{ reason.includes('180s') ? '⚡180s' : 'Tag' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="col-span-2 pr-2">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span :class="getScoreColor(coin.heat_score)">{{ coin.heat_score }}</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all duration-500" 
+                                     :class="getScoreColorBg(coin.heat_score)" 
+                                     :style="{ width: Math.min(coin.heat_score, 100) + '%' }"></div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-3 font-bold flex items-center gap-2">
+                            <span :class="coin.max_move >= 0 ? 'text-green-400' : 'text-red-400'" class="text-base">
+                                {{ coin.max_move > 0 ? '+' : '' }}{{ (coin.max_move * 100).toFixed(2) }}%
+                            </span>
+                        </div>
+
+                        <div class="col-span-2 text-xs text-gray-400 truncate">
+                           <span v-for="reason in coin.reasons">{{ reason }} </span>
+                        </div>
+
+                        <div class="col-span-2 text-right">
+                            <span class="font-bold" :class="coin.hits_1h > 0 ? 'text-white' : 'text-gray-600'">
+                                {{ coin.hits_today }} 
+                                <span class="text-xs" :class="coin.hits_1h > 0 ? 'text-yellow-500' : 'text-gray-700'">
+                                    ({{ coin.hits_1h }})
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3 flex flex-col gap-4">
+                <div class="glass-panel p-5 flex flex-col items-center justify-center bg-gradient-to-b from-[#161b22] to-[#0d1117]">
+                    <h3 class="text-gray-500 text-xs tracking-widest uppercase mb-2">Market Sentiment</h3>
+                    <div class="text-6xl font-bold mb-2 transition-colors duration-500" :class="marketHeat.color_class">
+                        {{ marketHeat.score }}
+                    </div>
+                    <div class="flex items-center gap-2 text-xl font-bold text-white mb-4">
+                        <span>{{ marketHeat.icon }}</span>
+                        <span>{{ marketHeat.level }}</span>
+                    </div>
+                    <div class="w-full grid grid-cols-2 gap-2 mt-2 border-t border-gray-800 pt-3">
+                        <div class="text-center">
+                            <div class="text-xs text-gray-500">Change (Δ)</div>
+                            <div class="font-mono font-bold" :class="marketHeat.delta >= 0 ? 'text-green-500' : 'text-red-500'">
+                                {{ marketHeat.delta > 0 ? '+' : '' }}{{ marketHeat.delta }}
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-xs text-gray-500">Active Coins</div>
+                            <div class="font-mono font-bold text-white">{{ hotList.length }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1 glass-panel flex flex-col overflow-hidden min-h-[200px]">
+                    <div class="p-2 border-b border-[#30363d] bg-[#161b22] text-xs font-bold text-gray-400">SYSTEM LOGS</div>
+                    <div class="flex-1 overflow-y-auto p-2 font-mono text-xs log-scroll bg-black">
+                        <div v-for="(log, index) in logs" :key="index" class="mb-1 break-words">
+                            <span class="text-gray-600">[{{ log.created_at.substring(11,19) }}]</span>
+                            <span :class="log.level==='ERROR'?'text-red-500':(log.level==='WARNING'?'text-yellow-500':'text-gray-400')">{{ log.message }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    {% endraw %}
+
+    <script>
+        const { createApp } = Vue
+        createApp({
+            data() {
+                return {
+                    isRunning: false,
+                    roundNum: 0,
+                    logs: [],
+                    hotList: [],
+                    marketHeat: { score: 0, level: 'Loading...', icon: '⏳', color_class: 'text-gray-500', delta: 0 },
+                    polling: null
+                }
+            },
+            methods: {
+                async fetchData() {
+                    try {
+                        const res = await fetch('/api/data');
+                        const data = await res.json();
+                        this.isRunning = data.is_running;
+                        this.roundNum = data.round;
+                        this.logs = data.logs;
+                        this.hotList = data.hot_list;
+                        this.marketHeat = data.market_heat;
+                    } catch (e) { console.error(e); this.isRunning = false; }
+                },
+                getScoreColor(score) {
+                    if(score >= 100) return 'text-purple-400 font-bold';
+                    if(score >= 80) return 'text-red-500 font-bold';
+                    if(score >= 60) return 'text-orange-400 font-bold';
+                    if(score >= 40) return 'text-yellow-300';
+                    return 'text-blue-300';
+                },
+                getScoreColorBg(score) {
+                    if(score >= 100) return 'bg-purple-500 animate-pulse shadow-[0_0_10px_rgba(168,85,247,0.5)]';
+                    if(score >= 80) return 'bg-red-500';
+                    if(score >= 60) return 'bg-orange-400';
+                    if(score >= 40) return 'bg-yellow-300';
+                    return 'bg-blue-500';
+                },
+                getTagClass(tag) {
+                    // V2.0 新增: 180秒异动专用特效
+                    if(tag.includes('180s')) return 'flash-tag';
+                    
+                    if(tag.includes('做空') || tag.includes('跌')) return 'bg-red-900 text-red-300 border-red-700';
+                    if(tag.includes('做多') || tag.includes('涨')) return 'bg-green-900 text-green-300 border-green-700';
+                    if(tag.includes('高胜率')) return 'bg-yellow-900 text-yellow-300 border-yellow-700';
+                    return 'bg-gray-700 text-gray-300 border-gray-600';
+                }
+            },
+            mounted() {
+                this.fetchData();
+                this.polling = setInterval(this.fetchData, 3000);
+            },
+            beforeUnmount() { clearInterval(this.polling); }
+        }).mount('#app')
+    </script>
+</body>
+</html>
